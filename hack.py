@@ -2,6 +2,7 @@ import requests
 import json
 import time
 import heapq
+import uuid
 import tweepy
 import openai
 import firebase_admin
@@ -76,13 +77,14 @@ def get_popular_tweets_from_handle(handle):
 cookies = None
 with open('cookies.json', 'r') as f:
     cookies = json.load(f)
+    print(cookies)
 
 headers = {
     'authorization': 'Bearer {bearer_token}'.format(bearer_token=get_env_var('twitter_client_bearer_token')),
     'x-csrf-token': get_env_var('twitter_client_csrf_token'),
 }
 
-def create_group_dm(text, participantIds):
+def create_group_dm_v1(text, participantIds):
     """_summary_: Create a group DM with the given participantIds
     
         FAILURE
@@ -114,7 +116,7 @@ def create_group_dm(text, participantIds):
                 },
                 'tweet': None,
             },
-            'requestId': '301e7cc0-6737-11ed-9772-45ab3155398b',
+            'requestId': str(uuid.uuid4()),
             'target': {
                 # 'conversation_id': '1586635172249731075',
                 'participant_ids': participantIds
@@ -135,6 +137,105 @@ def create_group_dm(text, participantIds):
     else:
         raise NotImplementedError(f"Unknown status {status}")
 
+def create_group_dm_v2(text, participantIds):
+    """
+    _summary_: Create a group DM with the given participantIds using the new2.json API
+
+        type Error {
+        code: Int
+        message: String
+        }
+
+        type ConversationCreate {
+        id: String
+        time: String
+        affects_sort: Boolean
+        request_id: String
+        conversation_id: String
+        }
+
+        type MessageData {
+        id: String
+        time: String
+        conversation_id: String
+        sender_id: String
+        text: String
+        }
+
+        type Message {
+        id: String
+        time: String
+        affects_sort: Boolean
+        request_id: String
+        conversation_id: String
+        message_data: MessageData
+        }
+
+        type Participant {
+        user_id: String
+        join_time: String
+        join_conversation_event_id: String
+        }
+
+        type Conversation {
+        conversation_id: String
+        type: String
+        sort_event_id: String
+        sort_timestamp: String
+        participants: [Participant]
+        create_time: String
+        created_by_user_id: String
+        nsfw: Boolean
+        notifications_disabled: Boolean
+        mention_notifications_disabled: Boolean
+        last_read_event_id: String
+        trusted: Boolean
+        low_quality: Boolean
+        status: String
+        min_entry_id: String
+        max_entry_id: String
+        }
+
+        type Entry {
+        conversation_create: ConversationCreate
+        message: Message
+        }
+
+        type ErrorResponse {
+        errors: [Error]
+        }
+
+        type SuccessResponse {
+        entries: [Entry]
+        conversations: [Conversation]
+        }
+
+        union Response = ErrorResponse | SuccessResponse
+    """
+    payload = {
+        "recipient_ids": ",".join(map(str,participantIds)),
+        "request_id": str(uuid.uuid4()),
+        "text": text,
+        "cards_platform": "Web-12",
+        "include_cards": 1,
+        "include_quote_count": True,
+        "dm_users": False
+        }
+    url = "https://twitter.com/i/api/1.1/dm/new2.json?ext=mediaColor%2CaltText%2CmediaStats%2ChighlightedLabel%2ChasNftAvatar%2CvoiceInfo%2CbirdwatchPivot%2Cenrichments%2CsuperFollowMetadata%2CunmentionInfo%2CeditControl%2Cvibe&include_ext_alt_text=true&include_ext_limited_action_results=false&include_reply_count=1&tweet_mode=extended&include_ext_views=true&include_groups=true&include_inbox_timelines=true&include_ext_media_color=true&supports_reactions=true"
+    response = requests.post(url, cookies=cookies, headers=headers, json=payload)
+    assert response.status_code == 200, f"Instead receieved {response.status_code}\n\n\n{response.text}"
+    parsed = json.loads(response.text)
+    print(parsed)
+    conversationId = list(parsed.get('conversations').keys())[0]
+    entries = parsed.get('entries')
+    errors = parsed.get('errors')
+    if errors is not None:
+        raise Exception(f"Failed to create DM with {participantIds} with errors {errors}")
+    elif entries is not None and len(entries) > 0:
+        print(f"Created DM with {participantIds} with conversationId {conversationId}")
+        return conversationId
+    else:
+        raise NotImplementedError(f"Unknown error occured")
 
 def exit_group_dm(conversationId):
     json_data = {
@@ -170,3 +271,17 @@ def generate_warm_intro(user1Name, user1Details, user2Name, user2Details):
         )
     )
     return res['choices'][0]['text']
+
+def connect(user1, user2):
+    introText = "Gm {u1_first_name} and {u2_first_name}, You're receiving an automated test Warm Intro. I quickly put together a bot that helps folks at N&W S3 break ice, but these intros could be 100x better with more user context (ex. N&W application material). 👉👈 https://github.com/parthraghav/LukewarmIntro".format(
+        u1_first_name = user1.get('name').split(' ')[0],
+        u2_first_name = user2.get('name').split(' ')[0]
+    )
+    print(introText)    
+
+    conversationId = create_group_dm_v2(text=introText, participantIds=[user1.get('id'), user2.get('id')])
+    print(conversationId)
+    if (conversationId):
+        # wait for 3 seconds
+        time.sleep(10)
+        exit_group_dm(conversationId)

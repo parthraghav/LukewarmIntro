@@ -10,6 +10,34 @@ from os import environ
 from dotenv import dotenv_values
 from itertools import combinations
 
+gql_mutations = {
+    "BakerQuery": {
+        "operationName": "BakeryQuery",
+        "operationType": "query",
+        "queryId": "pROR-yRiBVsEjJyHt3fvhg",
+    },
+    "ConversationControlChange": {
+        "operationName": "ConversationControlChange",
+        "operationType": "mutation",
+        "queryId": "hb1elGcj6769uT8qVYqtjw",
+    },
+    "ConversationControlDelete": {
+        "operationName": "ConversationControlDelete",
+        "operationType": "mutation",
+        "queryId": "OoMO_aSZ1ZXjegeamF9QmA",
+    },
+    "UnmentionUserFromConversation": {
+        "operationName": "UnmentionUserFromConversation",
+        "operationType": "mutation",
+        "queryId": "xVW9j3OqoBRY9d6_2OONEg"
+    },
+    "SendMessage": {
+        "operationName": "SendMessage",
+        "operationType": "mutation",
+        "queryId": "MaxK2PKX1F9Z-9SwqwavTw"
+    }
+}
+
 def get_env_var(key):
     local_env_config = dotenv_values(".env")
     return environ.get(key, local_env_config[key])
@@ -118,11 +146,10 @@ def create_group_dm_v1(text, participantIds):
             },
             'requestId': str(uuid.uuid4()),
             'target': {
-                # 'conversation_id': '1586635172249731075',
                 'participant_ids': participantIds
             },
         },
-        'queryId': 'MaxK2PKX1F9Z-9SwqwavTw',
+        'queryId': gql_mutations['SendMessage']['queryId'],
     }
     response = requests.post('https://twitter.com/i/api/graphql/MaxK2PKX1F9Z-9SwqwavTw/useSendMessageMutation', cookies=cookies, headers=headers, json=json_data)
     assert response.status_code == 200, f"Instead receieved {response.status_code}\n\n\n{response.text}"
